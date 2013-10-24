@@ -1,0 +1,150 @@
+#include "hashsetv.h"
+#include "stdlib.h"
+#include "string.h"
+#define mod_pow2(i, n)\
+((i) & ((n) - 1))
+
+#define entry_at(hs, i) entry_at1((hs), (i))
+#define entry_at1(hs, i) (struct entry*)(hs->buk + (i * hs->entry_size));
+
+#define UNUSED 0
+#define USED 1
+#define DELETED 2
+
+struct entry{
+	unsigned status;
+	char item[1];
+};
+struct hashset{
+	unsigned size;
+	unsigned entry_size;
+	char * buk;
+	hs_cmp cmp;
+	unsigned nitem;
+	hs_hash hash;
+	unsigned ele_size;
+};
+struct hashset * hashset_new(unsigned ele_size, hs_hash hash, hs_cmp cmp)
+{
+	struct hashset * hs = calloc(1, sizeof *hs);
+	if(hs)
+	{
+		hs->ele_size = ele_size;
+		hs->entry_size =
+			(sizeof(unsigned) + ele_size + sizeof(unsigned) - 1) /
+				sizeof(unsigned) * sizeof(unsigned);
+		hs->size = 1;
+		hs->nitem = 0;
+		hs->buk = calloc(hs->size, hs->entry_size);
+		if(hs->buk == NULL)
+		{
+			free(hs);
+			hs = NULL;
+		}
+		hs->hash = hash;
+		hs->cmp = cmp;
+	}
+	return hs;
+}
+void hashset_del(struct hashset * hs)
+{
+	free(hs->buk);
+	hs->hash = NULL;
+	hs->cmp = NULL;
+	free(hs);
+}
+void const * hashset_get(struct hashset * hs, void const * item)
+{
+	unsigned hash = (*hs->hash)(item);
+	hash = mod_pow2(hash, hs->size);
+	unsigned i = hash;
+	do{
+		struct entry * en = entry_at(hs, i);
+		switch(en->status){
+		case UNUSED:
+			return NULL;
+		case USED:
+			if((*hs->cmp)(item, en->item) == 0)
+				return en->item;
+		}
+		i = mod_pow2(i + 1, hs->size);
+	}while(i != hash);
+	return 0;
+}
+static int grow(struct hashset * hs)
+{
+	struct hashset bigger = *hs;
+	bigger.size *= 2;
+	bigger.nitem = 0;
+	if(bigger.size > hs->size)
+	{
+		bigger.buk = calloc(bigger.size, bigger.entry_size);
+		if(bigger.buk)
+		{
+			for(unsigned i = 0; i < hs->size; i++)
+			{
+				struct entry * en = entry_at(hs, i);
+				if(en->status == USED)
+					hashset_insert(&bigger, en->item);
+			}
+			*hs = bigger;
+			return 0;
+		}
+	}
+	return -1;
+}
+int hashset_insert(struct hashset * hs, void const * item)
+{
+	if(hs->nitem * 4 < hs->size * 3)
+	{
+		unsigned hash = (*hs->hash)(item);
+		hash = mod_pow2(hash, hs->size);
+		unsigned i = hash;
+		do
+		{
+			struct entry * en = entry_at(hs, i);
+			switch(en->status){
+			case UNUSED:
+				hs->nitem++;
+			case DELETED:
+				memcpy(en->item, item, hs->ele_size);
+				en->status = USED;
+				return 0;
+			default:
+				if((*hs->cmp)(item, en->item) == 0)
+					return 1;
+			}
+			i = mod_pow2(i + 1, hs->size);
+		}while(i != hash);
+		return 1;
+	}
+	else
+	{
+		if(grow(hs) == 0)
+			hashset_insert(hs, item);
+		else
+			return 1;
+	}
+}
+int hashset_remove(struct hashset * hs, void const * item)
+{
+	unsigned hash = (*hs->hash)(item);
+	hash = mod_pow2(hash, hs->size);
+	unsigned i = hash;
+	do
+	{
+		struct entry * en = entry_at(hs, i);
+		switch(en->status){
+		case UNUSED:
+			return 1;
+		case USED:
+			if((*hs->cmp)(item, en->item) == 0)
+			{
+				en->status = DELETED;
+				return 0;
+			}
+		}
+		i = mod_pow2(i + 1, hs->size);
+	}while(i != hash);
+	return 1;
+}
