@@ -1,5 +1,29 @@
+/*Copyright (c) <2013>, <Tian Lin Tan>
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditionsare met:
+
+1.	Redistributions of source code must retain the above copyright notice,
+	this list of conditions and the following disclaimer.
+2.	Redistributions in binary form must reproduce the above copyright
+	notice, this list of conditions and the following disclaimer in the
+	documentation and/or other materials provided with the distribution.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGE.
+*/
 #include "iniparser.h"
-#include "container/hashsetv.h"
+#include "hashsetv.h"
 #include "varstr.h"
 #include "stringop.h"
 #include <string.h>
@@ -107,9 +131,11 @@ static int char_is_newline(struct char_stream * cs)
 }
 static int char_is_name(struct char_stream * cs)
 {
-	return ((cs->c >= 'a' && cs->c <= 'z') ||
-		(cs->c >= 'A' && cs->c <= 'Z') ||
-		(cs->c == '_')) && !cs->escaped;
+	int c = cs->c;
+	return ((c >= 'a' && c <= 'z') ||
+		(c >= 'A' && c <= 'Z') ||
+		(c >= '0' && c <= '9') ||
+		(c == '_')) && !cs->escaped;
 }
 enum token_type{
 	TOKEN_TYPE_SECTION,
@@ -125,7 +151,7 @@ struct token{
 static struct token * token_new(void)
 {
 	struct token * newtok = calloc(1, sizeof(struct token));
-	if(newtok)
+	if(newtok != NULL)
 	{
 		newtok->type = TOKEN_TYPE_NEWLINE;
 		newtok->text = NULL;
@@ -197,6 +223,7 @@ static struct token * next_token(struct token_stream * ts)
 	do switch(state){
 	case READ_NEXT:
 		next_char(cs);
+		
 		state = SCAN;
 	case SCAN:
 		if(!cs->escaped)
@@ -224,7 +251,7 @@ static struct token * next_token(struct token_stream * ts)
 			state = SCAN_ERR;
 		break;
 	case SCAN_ERR:
-		fprintf(stderr,
+		fprintf(stderr,"next_token: "
 			"bad token at row %d, column %d\n",
 			cs->row, cs->col);
 		state = SKIP_LINE;
@@ -252,7 +279,7 @@ static struct token * next_token(struct token_stream * ts)
 		}
 		else
 		{
-			fprintf(stderr,
+			fprintf(stderr, "next_token: "
 				"bad section name at row %d, column %d, "
 				"expected ']'\n",
 				cs->row, cs->col);
@@ -274,25 +301,9 @@ static struct token * next_token(struct token_stream * ts)
 			state = BUILD_NAME_END;
 		break;
 	case BUILD_NAME_END:
-		if(cs->c == '=' && !cs->escaped)
-		{
-			ts->next_state = BUILD_ASSIGNMENT;
-			tok->text = cstr_dup(varstr_view(buf));
-			running = 0;
-		}
-		else if((cs->c == ' ' || cs->c == '\t') && !cs->escaped)
-		{
-			ts->next_state = READ_NEXT;
-			tok->text = cstr_dup(varstr_view(buf));
-			running = 0;
-		}
-		else
-		{
-			fprintf(stderr,
-				"bad name at row %d, column %d, expected '='\n",
-				cs->row, cs->col);
-			state = ERROR;
-		}
+		ts->next_state = SCAN;
+		tok->text = cstr_dup(varstr_view(buf));
+		running = 0;
 		break;
 	case BUILD_ASSIGNMENT:
 		// =
@@ -300,6 +311,7 @@ static struct token * next_token(struct token_stream * ts)
 		tok->type = TOKEN_TYPE_ASSIGNMENT;
 		ts->next_state = READ_NEXT;
 		running = 0;
+		break;
 	case BUILD_STRING:
 		/* "multi
 			line
@@ -328,7 +340,7 @@ static struct token * next_token(struct token_stream * ts)
 		}
 		else if(cs->c == EOF)
 		{
-			fprintf(stderr,
+			fprintf(stderr, "next_token"
 				"bad string at row %d, column %d, "
 				"expected '\"'\n",
 				cs->row, cs->col);
@@ -344,11 +356,14 @@ static struct token * next_token(struct token_stream * ts)
 		tok->type = TOKEN_TYPE_NEWLINE;
 		ts->next_state = READ_NEXT;
 		running = 0;
+		break;
 	case BUILD_END:
+		puts("end of file");
 		tok = token_new();
 		tok->type = TOKEN_TYPE_NEWLINE;
 		ts->end = 1;
 		running = 0;
+		break;
 	case ERROR:
 		token_del(tok);
 		tok = NULL;
@@ -575,6 +590,13 @@ struct ini * ini_new(void)
 	}
 	return ini;
 }
+void ini_del(struct ini * ini)
+{
+	if(ini != NULL)
+	{
+		fprintf(stderr, "ini_del not implemented\n");
+	}
+}
 int ini_read(struct ini * ini, FILE * fid)
 {
 	if(ini == NULL || fid == NULL)
@@ -633,24 +655,22 @@ int ini_read(struct ini * ini, FILE * fid)
 	}
 	return 0;
 }
-void ini_del(struct ini * ini)
+void ini_write(struct ini * ini, FILE * fid)
 {
-	if(ini != NULL)
-	{
-		fprintf(stderr, "ini_del not implemented\n");
-	}
+	
 }
+
 char const * ini_get(struct ini const * ini,
-	char * section, char * name)
+	char const * section, char const * name)
 {
-	struct entry * ret = NULL;
+	struct entry * section_table = NULL;
 	{
-		struct entry key = {.name = (section != NULL ? section : "")};
-		ret = hashset_get(ini->symtable, &key);
+		struct entry key = {.name = (section != NULL ? (char*)section : "")};
+		section_table = hashset_get(ini->symtable, &key);
 	}
-	if(ret != NULL)
+	if(setion_table != NULL)
 	{
-		struct entry key = {.name = name};
+		struct entry key = {.name = (char*)name};
 		ret = hashset_get(ret->val, &key);
 	}
 	if(ret != NULL)
