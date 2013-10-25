@@ -8,6 +8,8 @@ int main(void)
 	FILE * fid = fopen("testfile", "r");
 	assert(fid != NULL);
 	int res = ini_read(ini, fid);
+	fclose(fid);
 	assert(res == 0);
+	ini_write(ini, stdout);
 	return 0;
 }

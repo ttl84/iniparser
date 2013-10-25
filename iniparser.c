@@ -657,18 +657,33 @@ int ini_read(struct ini * ini, FILE * fid)
 }
 void ini_write(struct ini * ini, FILE * fid)
 {
-	
+	struct hashset_iter * section_iter = hashset_iter_new(ini->symtable);
+	while(hashset_iter_next(section_iter))
+	{
+		struct entry const * section = hashset_iter_get(section_iter);
+		struct hashset * section_table = section->val;
+		struct hashset_iter * val_iter = hashset_iter_new(section_table);
+		
+		fprintf(fid, "[%s]\n", section->name);
+		while(hashset_iter_next(val_iter))
+		{
+			struct entry const * pair = hashset_iter_get(val_iter);
+			fprintf(fid, "%s=%s\n", pair->name, pair->val);
+		}
+		hashset_iter_del(val_iter);
+	}
+	hashset_iter_del(section_iter);
 }
 
 char const * ini_get(struct ini const * ini,
 	char const * section, char const * name)
 {
-	struct entry * section_table = NULL;
+	struct entry * ret = NULL;
 	{
 		struct entry key = {.name = (section != NULL ? (char*)section : "")};
-		section_table = hashset_get(ini->symtable, &key);
+		ret = hashset_get(ini->symtable, &key);
 	}
-	if(setion_table != NULL)
+	if(ret != NULL)
 	{
 		struct entry key = {.name = (char*)name};
 		ret = hashset_get(ret->val, &key);

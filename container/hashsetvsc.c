@@ -144,3 +144,59 @@ int hashset_remove(struct hashset * hs, void const * item)
 	return -1;
 }
 
+struct hashset_iter{
+	struct hashset * hs;
+	struct entry * current;
+	struct entry * next;
+	int i;
+};
+struct hashset_iter * hashset_iter_new(struct hashset * hs)
+{
+	struct hashset_iter * iter = calloc(1, sizeof *iter);
+	if(iter != NULL && hs != NULL)
+	{
+		iter->hs = hs;
+		iter->current = NULL;
+		iter->next = NULL;
+		iter->i = (unsigned)-1;
+	}
+	else
+	{
+		free(iter);
+		iter = NULL;
+	}
+	return iter;
+}
+void hashset_iter_del(struct hashset_iter * iter)
+{
+	free(iter);
+}
+int hashset_iter_next(struct hashset_iter * iter)
+{
+	if(iter->next == NULL)
+	{
+		struct entry ** buk = iter->hs->buk;
+		unsigned size = iter->hs->size;
+		for(unsigned i = iter->i + 1; i < size; i++)
+		{
+			if(buk[i] != NULL)
+			{
+				iter->i = i;
+				iter->next = buk[i];
+				break;
+			}
+		}
+		if(iter->next == NULL)
+			return 0;
+	}
+	iter->current = iter->next;
+	iter->next = iter->next->next;
+	return 1;
+}
+void const * hashset_iter_get(struct hashset_iter * iter)
+{
+	if(iter != NULL && iter->current != NULL)
+		return iter->current->item;
+	else
+		return NULL;
+}
