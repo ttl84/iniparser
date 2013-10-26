@@ -32,22 +32,24 @@ typedef struct ini INI;
 // create new ini file handle
 struct ini * ini_new(void);
 
-// read from an input stream
-int ini_read(struct ini * ini, FILE * fid);
-
-// write ini file to output stream (unordered)
-void ini_write(struct ini * ini, FILE * fid);
-
 // delete ini file handle
 void ini_del(struct ini * ini);
 
+// read from an input stream
+int ini_read(struct ini * restrict ini, FILE * restrict fid);
+
+// write ini file to output stream (unordered)
+void ini_write(struct ini * restrict ini, FILE * restrict fid);
+
+
+
 // get a value from ini file
-char const * ini_get(struct ini const * ini,
+char const * ini_get(struct ini const * restrict ini,
 	char const * section,
 	char const * name);
 
 // set a value from ini file, create entry if it doesn't already exist
-int ini_set(struct ini * ini,
+int ini_set(struct ini * restrict ini,
 	char const * section_name,
 	char const * name,
 	char const * val);
