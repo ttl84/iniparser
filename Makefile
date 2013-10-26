@@ -13,10 +13,9 @@ LDFLAGS+=-lm
 CFLAGS+=-std=c99\
 	-pedantic-errors -Wstrict-aliasing=0 -Wall\
 	-g\
-	-I"./container/"
 
 #file names and directories
-DIR=. container
+DIR=.
 SRC=$(wildcard $(DIR:%=%/*.c))
 OBJ=$(SRC:.c=.o)
 DEP=$(SRC:.c=.d)
