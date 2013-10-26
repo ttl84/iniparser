@@ -31,8 +31,8 @@ struct hashset * hashset_new(unsigned ele_size, hs_hash hash, hs_cmp cmp)
 	{
 		hs->ele_size = ele_size;
 		hs->entry_size =
-			(sizeof(unsigned) + ele_size + sizeof(unsigned) - 1) /
-				sizeof(unsigned) * sizeof(unsigned);
+			(sizeof(int) + ele_size + sizeof(int) - 1) /
+				sizeof(int) * sizeof(int);
 		hs->size = 1;
 		hs->nitem = 0;
 		hs->buk = calloc(hs->size, hs->entry_size);
