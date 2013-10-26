@@ -27,7 +27,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <stdio.h>
 
 // ini file handle
-typedef struct ini INI;
+struct ini;
 
 // create new ini file handle
 struct ini * ini_new(void);
