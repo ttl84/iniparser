@@ -358,7 +358,6 @@ static struct token * next_token(struct token_stream * ts)
 		running = 0;
 		break;
 	case BUILD_END:
-		puts("end of file");
 		tok = token_new();
 		tok->type = TOKEN_TYPE_NEWLINE;
 		ts->end = 1;
@@ -568,7 +567,7 @@ static unsigned entry_hash(void const * a)
 	return sum;
 }
 
-// ini ini data
+//  ini data
 struct ini{
 	struct hashset * symtable;
 };
@@ -594,14 +593,31 @@ void ini_del(struct ini * ini)
 {
 	if(ini != NULL)
 	{
-		fprintf(stderr, "ini_del not implemented\n");
+		struct hashset_iter * section_iter = hashset_iter_new(ini->symtable);
+		while(hashset_iter_next(section_iter))
+		{
+			struct entry const * section = hashset_iter_get(section_iter);
+			struct hashset * section_table = section->val;
+			struct hashset_iter * val_iter = hashset_iter_new(section_table);
+			
+			while(hashset_iter_next(val_iter))
+			{
+				struct entry const * pair = hashset_iter_get(val_iter);
+				free(pair->name);
+				free(pair->val);
+			}
+			hashset_iter_del(val_iter);
+			hashset_del(section->val);
+			free(section->name);
+		}
+		hashset_iter_del(section_iter);
 	}
 }
 int ini_read(struct ini * ini, FILE * fid)
 {
 	if(ini == NULL || fid == NULL)
 		return -1;
-	struct hashset * section = NULL;
+	struct hashset * section_table = NULL;
 	struct command_stream * cs = command_stream_new(fid);
 	struct command * com = command_new();
 	com->type = SET_SECTION;
@@ -611,33 +627,30 @@ int ini_read(struct ini * ini, FILE * fid)
 		if(com->type == SET_SECTION)
 		{
 			struct entry key = {.name = com->arg1};
-			if(!hashset_get(ini->symtable, &key))
+			struct entry * section = hashset_get(ini->symtable, &key);
+			if(section == NULL)
 			{
-				struct entry e = {
+				struct entry new_section = {
 					.name = cstr_dup(com->arg1),
 					.val = hashset_new(sizeof(struct entry), &entry_cmp, &entry_hash)
 				};
-				hashset_insert(ini->symtable, &e);
-				section = e.val;
+				hashset_insert(ini->symtable, &new_section);
+				section_table = new_section.val;
 			}
 			else
 			{
-				struct entry * section_entry =
-					hashset_get(ini->symtable, com->arg1);
-				section = section_entry->val;
+				section_table = section->val;
 			}
 			free(com->arg1);
-			free(com->arg2);
-			command_del(com);
 		}
 		else if(com->type == INSERT_PAIR)
 		{
 			struct entry key = {.name = com->arg1};
-			struct entry * ret = hashset_get(section, &key);
+			struct entry * ret = hashset_get(section_table, &key);
 			if(ret != NULL)
 			{
 				struct entry old = *ret;
-				hashset_remove(section, ret);
+				hashset_remove(section_table, ret);
 				free(old.name);
 				free(old.val);
 			}
@@ -645,12 +658,13 @@ int ini_read(struct ini * ini, FILE * fid)
 				.name = cstr_dup(com->arg1),
 				.val = cstr_dup(com->arg2)
 			};
-			hashset_insert(section, &e);
+			hashset_insert(section_table, &e);
 			
 			free(com->arg1);
 			free(com->arg2);
-			command_del(com);
 		}
+		command_del(com);
+		com = NULL;
 		com = next_command(cs);
 	}
 	return 0;
@@ -678,9 +692,11 @@ void ini_write(struct ini * ini, FILE * fid)
 char const * ini_get(struct ini const * ini,
 	char const * section, char const * name)
 {
+	if(section == NULL)
+		section = "";
 	struct entry * ret = NULL;
 	{
-		struct entry key = {.name = (section != NULL ? (char*)section : "")};
+		struct entry key = {.name = (char*)section};
 		ret = hashset_get(ini->symtable, &key);
 	}
 	if(ret != NULL)
@@ -693,4 +709,51 @@ char const * ini_get(struct ini const * ini,
 	else
 		return NULL;
 }
-
+int ini_set(struct ini * ini, char const * section_name, char const * name, char const * val)
+{
+	
+	struct hashset * section_table = NULL;
+	// first find the section
+	{
+		struct entry key = {.name = (char*)section_name};
+		struct entry * section = hashset_get(ini->symtable, &key);
+		if(section != NULL)
+			section_table = section->val;
+	}
+	
+	// create section if it doesn't exist
+	if(section_table == NULL)
+	{
+		section_table = hashset_new(sizeof(struct entry), &entry_cmp, &entry_hash);
+		struct entry pair = {
+			.name = cstr_dup(section_name),
+			.val = section_table
+		};
+		hashset_insert(ini->symtable, &pair);
+	}
+	
+	// then find key value pair in section
+	struct entry * pair = NULL;
+	{
+		struct entry key = {.name = (char*)name};
+		pair = hashset_get(section_table, &key);
+	}
+	
+	// insert key value pair if pair doesn't exist
+	if(pair == NULL)
+	{
+		struct entry new_pair = {
+			.name = (char*)name,
+			.val = (char*)val
+		};
+		hashset_insert(section_table, &new_pair);
+	}
+	// otherwise set value
+	else
+	{
+		free(pair->val);
+		pair->val = NULL;
+		pair->val = cstr_dup(val);
+	}
+	return 0;
+}
