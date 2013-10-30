@@ -434,7 +434,14 @@ static struct command_stream * command_stream_new(FILE * fid)
 	}
 	return cs;
 }
-
+static void command_stream_del(struct command_stream * cs)
+{
+	if(cs != NULL)
+    {
+        token_stream_del(cs->ts);
+        free(cs);
+    }
+}
 /*
 This function is the core of the command stream.
 It consumes a stream of tokens, and produces a stream of commands.
@@ -672,6 +679,8 @@ int ini_read(struct ini * ini, FILE * fid)
 		return -1;
 	struct hashset * section_table = NULL;
 	struct command_stream * cs = command_stream_new(fid);
+    if(cs == NULL)
+        return -1;
 	struct command * com = command_new();
 	com->type = SET_SECTION;
 	com->arg1 = calloc(1, 1);
@@ -720,6 +729,7 @@ int ini_read(struct ini * ini, FILE * fid)
 		com = NULL;
 		com = next_command(cs);
 	}
+    command_stream_del(cs);
 	return 0;
 }
 void ini_write(struct ini * ini, FILE * fid)
@@ -796,8 +806,8 @@ int ini_set(struct ini * ini, char const * section_name, char const * name, char
 	if(pair == NULL)
 	{
 		struct entry new_pair = {
-			.name = (char*)name,
-			.val = (char*)val
+			.name = cstr_dup(name),
+			.val = cstr_dup(val)
 		};
 		hashset_insert(section_table, &new_pair);
 	}
@@ -805,7 +815,6 @@ int ini_set(struct ini * ini, char const * section_name, char const * name, char
 	else
 	{
 		free(pair->val);
-		pair->val = NULL;
 		pair->val = cstr_dup(val);
 	}
 	return 0;
