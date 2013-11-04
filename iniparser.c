@@ -745,7 +745,7 @@ void ini_write(struct ini * ini, FILE * fid)
 		while(hashset_iter_next(val_iter))
 		{
 			struct entry const * pair = hashset_iter_get(val_iter);
-			fprintf(fid, "%s=%s\n", pair->name, pair->val);
+			fprintf(fid, "%s=\"%s\"\n", pair->name, pair->val);
 		}
 		hashset_iter_del(val_iter);
 	}
