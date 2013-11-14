@@ -679,17 +679,21 @@ int ini_read(struct ini * ini, FILE * fid)
 		return -1;
 	struct hashset * section_table = NULL;
 	struct command_stream * cs = command_stream_new(fid);
-    if(cs == NULL)
-        return -1;
+	if(cs == NULL)
+		return -1;
+	
+	// no section implies empty section [], so make a section for [] first
 	struct command * com = command_new();
 	com->type = SET_SECTION;
 	com->arg1 = calloc(1, 1);
+	
 	while(com != NULL)
 	{
 		if(com->type == SET_SECTION)
 		{
 			struct entry key = {.name = com->arg1};
 			struct entry * section = hashset_get(ini->symtable, &key);
+			//if section isn't already in, make a new one and insert it
 			if(section == NULL)
 			{
 				struct entry new_section = {
@@ -699,6 +703,7 @@ int ini_read(struct ini * ini, FILE * fid)
 				hashset_insert(ini->symtable, &new_section);
 				section_table = new_section.val;
 			}
+			//else point current section to the existing section
 			else
 			{
 				section_table = section->val;
@@ -709,6 +714,7 @@ int ini_read(struct ini * ini, FILE * fid)
 		{
 			struct entry key = {.name = com->arg1};
 			struct entry * ret = hashset_get(section_table, &key);
+			//if pair is already in section, delete the old pair
 			if(ret != NULL)
 			{
 				struct entry old = *ret;
@@ -716,6 +722,7 @@ int ini_read(struct ini * ini, FILE * fid)
 				free(old.name);
 				free(old.val);
 			}
+			// insert the new pair
 			struct entry e = {
 				.name = cstr_dup(com->arg1),
 				.val = cstr_dup(com->arg2)
@@ -729,7 +736,7 @@ int ini_read(struct ini * ini, FILE * fid)
 		com = NULL;
 		com = next_command(cs);
 	}
-    command_stream_del(cs);
+	command_stream_del(cs);
 	return 0;
 }
 void ini_write(struct ini * ini, FILE * fid)
