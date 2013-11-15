@@ -134,28 +134,19 @@ enum token_type{
 	TOKEN_TYPE_NAME,
 	TOKEN_TYPE_ASSIGNMENT,
 	TOKEN_TYPE_STRING,
-	TOKEN_TYPE_NEWLINE
+	TOKEN_TYPE_NEWLINE,
+	TOKEN_TYPE_END
 };
 struct token{
 	enum token_type type;
 	char * text;
 };
-static struct token * token_new(void)
+static struct token token_new(enum token_type type)
 {
-	struct token * newtok = calloc(1, sizeof(struct token));
-	if(newtok != NULL)
-	{
-		newtok->type = TOKEN_TYPE_NEWLINE;
-		newtok->text = NULL;
-	}
-	return newtok;
-}
-static void token_del(struct token * tok)
-{
-	if(tok)
-	{
-		free(tok);
-	}
+	return (struct token){
+		.type = type,
+		.text = NULL
+	};
 }
 // token stream gives one token every time it is read
 struct token_stream{
@@ -190,10 +181,10 @@ static void token_stream_del(struct token_stream * ts)
 		free(ts);
 	}
 }
-static struct token * next_token(struct token_stream * ts)
+static struct token next_token(struct token_stream * ts)
 {
 	if(ts->end)
-		return NULL;
+		return token_new(TOKEN_TYPE_END);
 	enum states{
 		READ_NEXT = 0,
 		SCAN, SCAN_ERR,
@@ -210,7 +201,7 @@ static struct token * next_token(struct token_stream * ts)
 	
 	struct varstr * buf = varstr_new();
 	struct char_stream * cs = ts->cs;
-	struct token * tok = NULL;
+	struct token tok;
 	int running = 1;
 	do switch(state){
 	case READ_NEXT:
@@ -252,8 +243,7 @@ static struct token * next_token(struct token_stream * ts)
 	case BUILD_SECTION:
 		// [section]
 		varstr_clear(buf);
-		tok = token_new();
-		tok->type = TOKEN_TYPE_SECTION;
+		tok = token_new(TOKEN_TYPE_SECTION);
 		state = BUILD_SECTION1;
 	case BUILD_SECTION1:
 		next_char(cs);
@@ -266,7 +256,7 @@ static struct token * next_token(struct token_stream * ts)
 		if(cs->c == ']' && !cs->escaped)
 		{
 			ts->next_state = READ_NEXT;
-			tok->text = cstr_dup(varstr_view(buf));
+			tok.text = cstr_dup(varstr_view(buf));
 			running = 0;
 		}
 		else
@@ -280,8 +270,7 @@ static struct token * next_token(struct token_stream * ts)
 		break;
 	case BUILD_NAME:
 		// name
-		tok = token_new();
-		tok->type = TOKEN_TYPE_NAME;
+		tok = token_new(TOKEN_TYPE_NAME);
 		varstr_clear(buf);
 		varstr_append(buf, cs->c);
 		state = BUILD_NAME1;
@@ -294,13 +283,12 @@ static struct token * next_token(struct token_stream * ts)
 		break;
 	case BUILD_NAME_END:
 		ts->next_state = SCAN;
-		tok->text = cstr_dup(varstr_view(buf));
+		tok.text = cstr_dup(varstr_view(buf));
 		running = 0;
 		break;
 	case BUILD_ASSIGNMENT:
 		// =
-		tok = token_new();
-		tok->type = TOKEN_TYPE_ASSIGNMENT;
+		tok = token_new(TOKEN_TYPE_ASSIGNMENT);
 		ts->next_state = READ_NEXT;
 		running = 0;
 		break;
@@ -310,8 +298,7 @@ static struct token * next_token(struct token_stream * ts)
 				string
 					with escape /"/n"
 		*/
-		tok = token_new();
-		tok->type = TOKEN_TYPE_STRING;
+		tok = token_new(TOKEN_TYPE_STRING);
 		varstr_clear(buf);
 		state = BUILD_STRING1;
 	case BUILD_STRING1:
@@ -327,7 +314,7 @@ static struct token * next_token(struct token_stream * ts)
 		if(cs->c == '"' && !cs->escaped)
 		{
 			ts->next_state = READ_NEXT;
-			tok->text = cstr_dup(varstr_view(buf));
+			tok.text = cstr_dup(varstr_view(buf));
 			running = 0;
 		}
 		else if(cs->c == EOF)
@@ -344,20 +331,16 @@ static struct token * next_token(struct token_stream * ts)
 		state = SKIP_LINE;
 		break;
 	case BUILD_NEWLINE:
-		tok = token_new();
-		tok->type = TOKEN_TYPE_NEWLINE;
+		tok = token_new(TOKEN_TYPE_NEWLINE);
 		ts->next_state = READ_NEXT;
 		running = 0;
 		break;
 	case BUILD_END:
-		tok = token_new();
-		tok->type = TOKEN_TYPE_NEWLINE;
+		tok = token_new(TOKEN_TYPE_NEWLINE);
 		ts->end = 1;
 		running = 0;
 		break;
 	case ERROR:
-		token_del(tok);
-		tok = NULL;
 		state = SKIP_LINE;
 	case SKIP_LINE:
 		if(cs->c == '\n' && !cs->escaped)
@@ -459,7 +442,7 @@ static struct command * next_command(struct command_stream * cs)
 	} state = cs->next_state;
 	
 	struct token_stream * ts = cs->ts;
-	struct token * tok = NULL;
+	struct token tok;
 	struct command * com = NULL;
 	
 	do switch(state){
@@ -467,13 +450,13 @@ static struct command * next_command(struct command_stream * cs)
 		tok = next_token(ts);
 		state = SCAN;
 	case SCAN://inspect the token, and decide what actions to take
-		if(tok == NULL)
+		if(tok.type == TOKEN_TYPE_END)
 			state = BUILD_END;
-		else if(tok->type == TOKEN_TYPE_SECTION)
+		else if(tok.type == TOKEN_TYPE_SECTION)
 			state = BUILD_SET_SECTION;
-		else if(tok->type == TOKEN_TYPE_NAME)
+		else if(tok.type == TOKEN_TYPE_NAME)
 			state = BUILD_INSERT_PAIR;
-		else if(tok->type == TOKEN_TYPE_NEWLINE)
+		else if(tok.type == TOKEN_TYPE_NEWLINE)
 			state = READ_NEXT;
 		else
 			state = SKIP_LINE;
@@ -481,16 +464,12 @@ static struct command * next_command(struct command_stream * cs)
 	case BUILD_SET_SECTION:
 		com = command_new();
 		com->type = SET_SECTION;
-		com->arg1 = tok->text;
-		tok->text = NULL;
-		token_del(tok);
-		tok = NULL;
+		com->arg1 = tok.text;
 
 		tok = next_token(ts);
-		assert(tok != NULL);
-		if(tok->type == TOKEN_TYPE_NEWLINE)
+		assert(tok.type != TOKEN_TYPE_END);
+		if(tok.type == TOKEN_TYPE_NEWLINE)
 		{
-			token_del(tok);
 			cs->next_state = READ_NEXT;
 			return com;
 		}
@@ -500,17 +479,12 @@ static struct command * next_command(struct command_stream * cs)
 	case BUILD_INSERT_PAIR:
 		com = command_new();
 		com->type = INSERT_PAIR;
-		com->arg1 = tok->text;
-		tok->text = NULL;
-		token_del(tok);
-		tok = NULL;
+		com->arg1 = tok.text;
 
 		tok = next_token(ts);
-		assert(tok != NULL);
-		if(tok->type == TOKEN_TYPE_ASSIGNMENT)
+		assert(tok.type != TOKEN_TYPE_END);
+		if(tok.type == TOKEN_TYPE_ASSIGNMENT)
 		{
-			token_del(tok);
-			tok = NULL;
 		}
 		else
 		{
@@ -519,13 +493,10 @@ static struct command * next_command(struct command_stream * cs)
 		}
 
 		tok = next_token(ts);
-		assert(tok != NULL);
-		if(tok->type == TOKEN_TYPE_NAME || tok->type == TOKEN_TYPE_STRING)
+		assert(tok.type != TOKEN_TYPE_END);
+		if(tok.type == TOKEN_TYPE_NAME || tok.type == TOKEN_TYPE_STRING)
 		{
-			com->arg2 = tok->text;
-			tok->text = NULL;
-			token_del(tok);
-			tok = NULL;
+			com->arg2 = tok.text;
 		}
 		else
 		{
@@ -534,8 +505,8 @@ static struct command * next_command(struct command_stream * cs)
 		}
 
 		tok = next_token(ts);
-		assert(tok != NULL);
-		if(tok->type == TOKEN_TYPE_NEWLINE)
+		assert(tok.type != TOKEN_TYPE_END);
+		if(tok.type == TOKEN_TYPE_NEWLINE)
 		{
 			cs->next_state = READ_NEXT;
 			return com;
@@ -559,16 +530,10 @@ static struct command * next_command(struct command_stream * cs)
 		}
 		state = SKIP_LINE;
 	case SKIP_LINE:
-		if(tok->type == TOKEN_TYPE_NEWLINE)
-		{
-			token_del(tok);
+		if(tok.type == TOKEN_TYPE_NEWLINE)
 			state = READ_NEXT;
-		}
 		else
-		{
-			token_del(tok);
 			tok = next_token(ts);
-		}
 		break;
 	}while(1);
 }
