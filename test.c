@@ -14,6 +14,7 @@ int main(void)
 	assert(res == 0);
 	
 	ini_set(ini, "aa", "pswd", "1234");
+	ini_set(ini, "aa", "pswd", "1234");
 	ini_write(ini, stdout);
 	ini_del(ini);
 	return 0;
