@@ -22,7 +22,6 @@ DEP=$(SRC:.c=.d)
 
 #rules
 $(BIN): $(OBJ)
-	echo $(OS) $(RM)
 	$(CC) $^ $(LDFLAGS) -o $(BIN)
 -include $(DEP)
 %.o: %.c
