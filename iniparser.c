@@ -34,9 +34,10 @@ POSSIBILITY OF SUCH DAMAGE.
 /*
 here are all the possible commands.
 */
-enum command_name{
-	SET_SECTION,
-	INSERT_PAIR
+enum command_type{
+	COMMAND_NONE,
+	COMMAND_SET_SECTION,
+	COMMAND_INSERT_PAIR
 };
 
 /*
@@ -44,22 +45,17 @@ Command objects are consumed by the ini reader to build an in-memory
 version of the file.
 */
 struct command{
-	enum command_name type;
+	enum command_type type;
 	char * arg1;
 	char * arg2;
 };
-static struct command * command_new(void)
+static struct command command_new(enum command_type type)
 {
-	return calloc(1, sizeof(struct command));
-}
-static void command_del(struct command * com)
-{
-	if(com != NULL)
-	{
-		com->arg1 = NULL;
-		com->arg2 = NULL;
-		free(com);
-	}
+	return (struct command){
+		.type = type,
+		.arg1 = NULL,
+		.arg2 = NULL
+	};
 }
 
 /*
@@ -105,7 +101,7 @@ static void command_stream_del(struct command_stream * cs)
 This function is the core of the command stream.
 It consumes a stream of tokens, and produces a stream of commands.
 */
-static struct command * next_command(struct command_stream * cs)
+static struct command command_stream_read(struct command_stream * cs)
 {
 	enum states{
 		READ_NEXT,
@@ -119,7 +115,7 @@ static struct command * next_command(struct command_stream * cs)
 	
 	struct token_stream * ts = cs->ts;
 	struct token tok;
-	struct command * com = NULL;
+	struct command com = {0};
 	
 	do switch(state){
 	case READ_NEXT:// get the next token from the stream
@@ -138,9 +134,8 @@ static struct command * next_command(struct command_stream * cs)
 			state = SKIP_LINE;
 		break;
 	case BUILD_SET_SECTION:
-		com = command_new();
-		com->type = SET_SECTION;
-		com->arg1 = tok.text;
+		com = command_new(COMMAND_SET_SECTION);
+		com.arg1 = tok.text;
 
 		tok = token_stream_read(ts);
 		assert(tok.type != TOKEN_TYPE_END);
@@ -153,9 +148,8 @@ static struct command * next_command(struct command_stream * cs)
 			state = ERROR;
 		break;
 	case BUILD_INSERT_PAIR:
-		com = command_new();
-		com->type = INSERT_PAIR;
-		com->arg1 = tok.text;
+		com = command_new(COMMAND_INSERT_PAIR);
+		com.arg1 = tok.text;
 
 		tok = token_stream_read(ts);
 		assert(tok.type != TOKEN_TYPE_END);
@@ -172,7 +166,7 @@ static struct command * next_command(struct command_stream * cs)
 		assert(tok.type != TOKEN_TYPE_END);
 		if(tok.type == TOKEN_TYPE_NAME || tok.type == TOKEN_TYPE_STRING)
 		{
-			com->arg2 = tok.text;
+			com.arg2 = tok.text;
 		}
 		else
 		{
@@ -195,15 +189,10 @@ static struct command * next_command(struct command_stream * cs)
 	case BUILD_END:
 		cs->end = 1;
 		cs->next_state = BUILD_END;
-		return NULL;
+		return command_new(COMMAND_NONE);
 	case ERROR:
-		if(com != NULL)
-		{
-			free(com->arg1);
-			free(com->arg2);
-			command_del(com);
-			com = NULL;
-		}
+		free(com.arg1);
+		free(com.arg2);
 		state = SKIP_LINE;
 	case SKIP_LINE:
 		if(tok.type == TOKEN_TYPE_NEWLINE)
@@ -324,19 +313,18 @@ int ini_read(struct ini * ini, FILE * fid)
 		return -1;
 	
 	// no section implies empty section [], so make a section for [] first
-	struct command * com = command_new();
-	com->type = SET_SECTION;
-	com->arg1 = calloc(1, 1);
+	struct command com = command_new(COMMAND_SET_SECTION);
+	com.arg1 = calloc(1, 1);
 	
-	while(com != NULL)
+	while(com.type != COMMAND_NONE)
 	{
-		if(com->type == SET_SECTION)
+		if(com.type == COMMAND_SET_SECTION)
 		{
-			struct entry * section = hashset_get(ini->symtable, &(struct entry){.name = com->arg1});
+			struct entry * section = hashset_get(ini->symtable, &(struct entry){.name = com.arg1});
 			//if section isn't already in, make a new one and insert it
 			if(section == NULL)
 			{
-				char * section_name = cstr_dup(com->arg1);
+				char * section_name = cstr_dup(com.arg1);
 				section_table = hashset_new(sizeof(struct entry), &entry_cmp, &entry_hash);
 				hashset_insert(ini->symtable, &(struct entry){
 					.name = section_name,
@@ -348,31 +336,29 @@ int ini_read(struct ini * ini, FILE * fid)
 			{
 				section_table = section->val;
 			}
-			free(com->arg1);
+			free(com.arg1);
 		}
-		else if(com->type == INSERT_PAIR)
+		else if(com.type == COMMAND_INSERT_PAIR)
 		{
-			struct entry * pair = hashset_get(section_table, &(struct entry){.name = com->arg1});
+			struct entry * pair = hashset_get(section_table, &(struct entry){.name = com.arg1});
 			//if pair is already in section, modify pair
 			if(pair != NULL)
 			{
 				free(pair->val);
-				pair->val = cstr_dup(com->arg2);
+				pair->val = cstr_dup(com.arg2);
 			}
 			// if pair is not in, insert the new pair
 			else
 			{
 				hashset_insert(section_table, &(struct entry){
-					.name = cstr_dup(com->arg1),
-					.val = cstr_dup(com->arg2)
+					.name = cstr_dup(com.arg1),
+					.val = cstr_dup(com.arg2)
 				});
 			}
-			free(com->arg1);
-			free(com->arg2);
+			free(com.arg1);
+			free(com.arg2);
 		}
-		command_del(com);
-		com = NULL;
-		com = next_command(cs);
+		com = command_stream_read(cs);
 	}
 	command_stream_del(cs);
 	return 0;
