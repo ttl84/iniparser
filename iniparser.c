@@ -23,7 +23,7 @@ ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 POSSIBILITY OF SUCH DAMAGE.
 */
 #include "iniparser.h"
-#include "tokenizer.h"
+#include "initokenizer.h"
 #include "hashsetv.h"
 #include "stringop.h"
 #include <string.h>
