@@ -376,7 +376,17 @@ void ini_write(struct ini * ini, FILE * fid)
 		while(hashset_iter_next(val_iter))
 		{
 			struct entry const * pair = hashset_iter_get(val_iter);
-			fprintf(fid, "%s=\"%s\"\n", pair->name, pair->val);
+			fprintf(fid, "%s=\"", pair->name);
+            
+            // this loop inserts escapes if the string contains the character "
+            char const * val = pair->val;
+            for(unsigned i = 0, end = strlen(val); i < end; i++)
+            {
+                if(val[i] == '"')
+                    fputc('\\', fid);
+                fputc(val[i], fid);
+            }
+            fprintf(fid, "\"\n");
 		}
 		hashset_iter_del(val_iter);
 	}
