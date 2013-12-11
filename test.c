@@ -6,7 +6,7 @@ int main(void)
 	struct ini * ini = ini_new();
 	assert(ini != NULL);
 	
-	FILE * fid = fopen("testfile", "r");
+	FILE * fid = stdin;
 	assert(fid != NULL);
 	int res = ini_read(ini, fid);
 	fclose(fid);
